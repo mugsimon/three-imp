@@ -44,7 +44,6 @@
   (lambda (body e)
     (list body e)))
 
-
 (define compile 
   (lambda (x e next)
     (cond 
@@ -133,7 +132,7 @@
     (VM '() (compile x '() '(halt)) 0 0)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(define c.scm:debug
+(define c.scm:VM-debug
   (lambda (a x e s)
     (print "a:" a)
     (print "x:" x)
@@ -154,8 +153,6 @@
 		     (display " ")
 		     (loop (- i 1))))))))
 
-(define *top-level-continuation* #f)
-
 (define repl
   (lambda ()
     (call/cc
@@ -169,6 +166,8 @@
 	       (begin (print (evaluate input))
 		      (loop)))))))))
 
+(define *top-level-continuation* #f)
+
 (define c.scm:read-eval-print
   (lambda (cont)
     (set! *top-level-continuation* cont)
@@ -181,7 +180,7 @@
     (display "c.scm> ")
     (flush)))
 
-(define c.scm:repl
+(define c.scm
   (lambda ()
     (let loop ()
       (if (call/cc c.scm:read-eval-print)
@@ -189,17 +188,24 @@
 	  (print "bye")))))
 
 (define c.scm:error
-  (lambda (msg)
-    (print msg)
-    (*top-level-continuation* #t)))
+  (lambda msg
+    (display "C.SCM ERROR")
+    (let loop ((msg msg))
+      (if (null? msg)
+	  (begin (newline)
+		 (*top-level-continuation* #t))
+	  (begin (display ": ")
+		 (display (car msg))
+		 (loop (cdr msg)))))))
+			  
 
 (define compile-lookup
   (lambda (var e return)
     (if (null? e)
-	(c.scm:error "c.scm:error - Unbound variable")
+	(c.scm:error "Unbound variable" var)
 	(recur nxtrib ([e e] [rib 0])
 	       (if (null? e)
-		   (c.scm:error "c.scm:error - Unbound variable")
+		   (c.scm:error "Unbound variable" var)
 		   (recur nxtelt ([vars (car e)] [elt 0])
 			  (cond 
 			   [(null? vars)	
@@ -211,7 +217,7 @@
 
 (define VM 
   (lambda (a x e s)
-    (c.scm:debug a x e s) ;;debug code
+    (c.scm:VM-debug a x e s) ;;debug code
     (record-case x
 		 [halt ()
 		       a]
@@ -240,25 +246,17 @@
 		  (print "Unknown VM instruction")
 		  a])))
 
-#|
-(define compile-define-lookup
-  (lambda (var e return)
-    (if (null? e)
-	(c.scm:error "c.scm:error - Unbound variable")
-	(recur nxtrib ([e e] [rib 0])
-	       (if (null? e)
-		   (c.scm:error "c.scm:error - Unbound variable")
-		   (recur nxtelt ([vars (car e)] [elt 0])
-			  (cond 
-			   [(null? vars)	
-			    (nxtrib (cdr e) (+ rib 1))]
-			   [(eq? (car vars) var)
-			    (return rib elt)]
-			   [else
-			    (nxtelt (cdr vars) (+ elt 1))])))))))
+(define c.scm:compile-debug
+  (lambda (x e next)
+    (print "x:" x)
+    (print "e:" e)
+    (print "next:" next)
+    (print "-----------------")))
+  
 
 (define compile 
   (lambda (x e next)
+    (c.scm:compile-debug x e next) ;;debug
     (cond 
      [(symbol? x) 
       (compile-lookup x e 
@@ -291,4 +289,37 @@
 					      e 
 					      (list 'argument c)))))])]
      [else (list 'constant x next)])))
+
+(define *stack-pointer* 0)
+(define *frame-pointer* 0)
+(define *global-environment* '())
+
+(define initialize
+  (lambda ()))
+
+(define add-primitive
+  (lambda ())
+  )
+
+(define evaluate
+  (lambda (x)
+    (VM '() (compile x '() '(halt)) 0 0)))
+
+#|
+(define compile-define-lookup
+  (lambda (var e return)
+    (if (null? e)
+	(c.scm:error "c.scm:error - Unbound variable")
+	(recur nxtrib ([e e] [rib 0])
+	       (if (null? e)
+		   (c.scm:error "c.scm:error - Unbound variable")
+		   (recur nxtelt ([vars (car e)] [elt 0])
+			  (cond 
+			   [(null? vars)	
+			    (nxtrib (cdr e) (+ rib 1))]
+			   [(eq? (car vars) var)
+			    (return rib elt)]
+			   [else
+			    (nxtelt (cdr vars) (+ elt 1))])))))))
+
 |#
