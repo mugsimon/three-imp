@@ -81,7 +81,7 @@
 
 (define stack (make-vector 1000))
 
-(define index 
+(define index ;; スタックのトップからi番目を参照
   (lambda (s i)
     (vector-ref stack (- (- s i) 1))))
 
@@ -248,8 +248,8 @@
 			(print "apply")
 			(record (body link) a
 				(if (primitive? body)
-				    (VM (apply-primitive link (primitive-args s (- s 3 e)))
-					(list 'return (length (primitive-args s (- s 3 e))))
+				    (VM (apply-primitive link (primitive-args s (- s e 3)))
+					(list 'return (length (primitive-args s (- s e 3))))
 				        e
 					s)
 				    (VM a body s (push link s))))]
@@ -325,7 +325,7 @@
 
 (define (primitive-args s i)
   (let loop ((args '())
-	     (i i))
+	     (i (- i 1)))
     (if (zero? i)
 	(cons (index s i) args)
 	(loop (cons (index s i) args) (- i 1)))))
@@ -336,9 +336,14 @@
     (apply func args)))
 
 (define (apply-primitive func args)
-  (print (subr? func))
-  (print (list? args))
-    (apply func args))
+  (let ((func (primitive-func func)))
+    (print func)
+    (print args)
+    (apply func args)))
+
+(define (primitive-func func)
+  (case func
+    ((+) +)))
 
 
     
