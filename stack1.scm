@@ -247,7 +247,12 @@
 		 [apply ()
 			(print "apply")
 			(record (body link) a
-				(VM a body s (push link s)))]
+				(if (primitive? body)
+				    (VM (apply-primitive link (primitive-args s (- s 3 e)))
+					(list 'return (length (primitive-args s (- s 3 e))))
+				        e
+					s)
+				    (VM a body s (push link s))))]
 		 [return (n) ;;n=[args]+[static link]
 			 (print "return")
 			 (let ([s (- s n)])
@@ -299,40 +304,60 @@
 					      (list 'argument c)))))])]
      [else (list 'constant x next)])))
 
-
-
-
-
 (define *stack-pointer* 0)
 (define *frame-pointer* 0)
 (define *global-environment* '())
 
 (define initialize
   (lambda ()
+    (set! *stack-pointer* 0)
+    (set! *global-environment* '())
     (let ((vars '(+)))
       (set! *global-environment* (extend *global-environment* vars))
       (for-each add-primitive vars))))
 
 (define add-primitive
   (lambda (primitive-procedure)
-    (set! *stack-pointer* (push (cons 'primitive primitive-procedure) *stack-pointer*))))
+    (set! *stack-pointer* (push (list 'primitive primitive-procedure) *stack-pointer*))))
 
 (define (primitive? x)
-  (eq? (car x) 'primitive))
+  (eq? x 'primitive))
+
+(define (primitive-args s i)
+  (let loop ((args '())
+	     (i i))
+    (if (zero? i)
+	(cons (index s i) args)
+	(loop (cons (index s i) args) (- i 1)))))
 
 (define (apply-primitive body link)
-  (let ((func (cdr body)))
-    
+  (let ((func (cadr body))
+	(args (primitive-args link)))
+    (apply func args)))
 
-#;(define c.scm:read-eval-print
+(define (apply-primitive func args)
+  (print (subr? func))
+  (print (list? args))
+    (apply func args))
+
+
+    
+(define c.scm
+  (lambda ()
+    (initialize)
+    (let loop ()
+      (if (call/cc c.scm:read-eval-print)
+	  (loop)
+	  (print "bye")))))
+
+(define c.scm:read-eval-print
   (lambda (cont)
     (set! *top-level-continuation* cont)
-    (initialize)
     (c.scm:prompt)
     (print (evaluate (read)))
     #t))
 
-#;(define evaluate
+(define evaluate
   (lambda (x)
     (VM '() (compile x *global-environment* '(halt)) *stack-pointer* *stack-pointer*)))
 
