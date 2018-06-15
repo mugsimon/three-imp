@@ -121,7 +121,7 @@
 			 (let ([s (- s n)])
 			   (VM a (index s 0) (index s 1) (- s 2)))])))
 
-(define find-link
+(define find-link 
   (lambda (n e)
     (if (= n 0)
         e
@@ -248,8 +248,8 @@
 			(print "apply")
 			(record (body link) a
 				(if (primitive? body)
-				    (VM (apply-primitive link (primitive-args s (- s e 3)))
-					(list 'return (length (primitive-args s (- s e 3))))
+				    (VM (apply-primitive link (primitive-args s (- s e 2)))
+					(list 'return (length (primitive-args s (- s e 2))))
 				        e
 					s)
 				    (VM a body s (push link s))))]
@@ -261,6 +261,8 @@
 		  (print "Unknown VM instruction")
 		  a])))
 
+(define (VMapply a x e s))
+  
 (define c.scm:compile-debug
   (lambda (x e next)
     (print "x:" x)
@@ -272,28 +274,34 @@
   (lambda (x e next)
     (c.scm:compile-debug x e next) ;;debug
     (cond 
-     [(symbol? x) 
+     [(symbol? x)
+      (print "symbol")
       (compile-lookup x e 
 		      (lambda (n m)
 			(list 'refer n m next)))]
      [(pair? x)
       (record-case x 
 		   [quote (obj)
+			  (print "quote")
 			  (list 'constant obj next)]
 		   [lambda (vars body)
+		     (print "lambda")
 		     (list 'close
 			   (compile body 
 				    (extend e vars)
 				    (list 'return (+ (length vars) 1)))
 			   next)]
 		   [if (test then else)
+		       (print "if")
 		       (let ([thenc (compile then e next)]
 			     [elsec (compile else e next)])
 			 (compile test e (list 'test thenc elsec)))]
 		   [set! (var x)
+			 (print "set!")
 			 (compile-lookup var e
 					 (lambda (n m) (compile x e (list 'assign n m next))))]
 		   [else
+		    (print "else")
 		    (recur loop ([args (cdr x)]
 				 [c (compile (car x) e '(apply))])
 			   (if (null? args)
@@ -302,7 +310,9 @@
 				     (compile (car args)
 					      e 
 					      (list 'argument c)))))])]
-     [else (list 'constant x next)])))
+     [else
+      (print "constant")
+      (list 'constant x next)])))
 
 (define *stack-pointer* 0)
 (define *frame-pointer* 0)
@@ -324,6 +334,8 @@
   (eq? x 'primitive))
 
 (define (primitive-args s i)
+  (print "i:" i)
+  (print "s:" s)
   (let loop ((args '())
 	     (i (- i 1)))
     (if (zero? i)
@@ -344,8 +356,6 @@
 (define (primitive-func func)
   (case func
     ((+) +)))
-
-
     
 (define c.scm
   (lambda ()
@@ -366,6 +376,7 @@
   (lambda (x)
     (VM '() (compile x *global-environment* '(halt)) *stack-pointer* *stack-pointer*)))
 
+
 #|
 (define compile-define-lookup
   (lambda (var e return)
@@ -384,3 +395,4 @@
 			    (nxtelt (cdr vars) (+ elt 1))])))))))
 
 |#
+

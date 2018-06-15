@@ -38,7 +38,7 @@
         (cond 
           [(null? vars) (nxtrib (cdr e) (+ rib 1))]
           [(eq? (car vars) var) (return rib elt)]
-[else (nxtelt (cdr vars) (+ elt 1))])))))
+	  [else (nxtelt (cdr vars) (+ elt 1))])))))
 
 (define functional
   (lambda (body e)
@@ -153,19 +153,6 @@
 		     (display " ")
 		     (loop (- i 1))))))))
 
-(define repl
-  (lambda ()
-    (call/cc
-     (lambda (quit)
-       (let loop ()
-	 (display "stack-base> ")
-	 (flush)
-	 (let ((input (read)))
-	   (if (eq? input 'exit)
-	       (quit 'bye)
-	       (begin (print (evaluate input))
-		      (loop)))))))))
-
 (define *top-level-continuation* #f)
 
 (define c.scm:read-eval-print
@@ -253,7 +240,6 @@
     (print "next:" next)
     (print "-----------------")))
   
-
 (define compile 
   (lambda (x e next)
     (c.scm:compile-debug x e next) ;;debug
@@ -290,36 +276,6 @@
 					      (list 'argument c)))))])]
      [else (list 'constant x next)])))
 
-(define *stack-pointer* 0)
-(define *frame-pointer* 0)
-(define *global-environment* '())
-
-(define initialize
-  (lambda ()))
-
-(define add-primitive
-  (lambda ())
-  )
-
 (define evaluate
   (lambda (x)
     (VM '() (compile x '() '(halt)) 0 0)))
-
-#|
-(define compile-define-lookup
-  (lambda (var e return)
-    (if (null? e)
-	(c.scm:error "c.scm:error - Unbound variable")
-	(recur nxtrib ([e e] [rib 0])
-	       (if (null? e)
-		   (c.scm:error "c.scm:error - Unbound variable")
-		   (recur nxtelt ([vars (car e)] [elt 0])
-			  (cond 
-			   [(null? vars)	
-			    (nxtrib (cdr e) (+ rib 1))]
-			   [(eq? (car vars) var)
-			    (return rib elt)]
-			   [else
-			    (nxtelt (cdr vars) (+ elt 1))])))))))
-
-|#

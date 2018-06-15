@@ -56,6 +56,7 @@
         e
         (find-link (- n 1) (index e -1)))))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; functions for debug
 (define c.scm:VM-debug
   (lambda (a x e s)
     (print "a:" a)
@@ -77,31 +78,12 @@
 		     (display " ")
 		     (loop (- i 1))))))))
 
-(define *top-level-continuation* #f)
-
-(define c.scm:read-eval-print
-  (lambda (cont)
-    (set! *top-level-continuation* cont)
-    (c.scm:prompt)
-    (print (evaluate (read)))
-    #t))
-
-(define c.scm:prompt
-  (lambda ()
-    (display "c.scm> ")
-    (flush)))
-
-(define c.scm:error
-  (lambda msg
-    (display "C.SCM ERROR")
-    (let loop ((msg msg))
-      (if (null? msg)
-	  (begin (newline)
-		 (*top-level-continuation* #t))
-	  (begin (display ": ")
-		 (display (car msg))
-		 (loop (cdr msg)))))))
-			  
+(define c.scm:compile-debug
+  (lambda (x e next)
+    (print "x:" x)
+    (print "e:" e)
+    (print "next:" next)
+    (print "-----------------")))
 
 (define compile-lookup
   (lambda (var e return)
@@ -118,6 +100,69 @@
 			    (return rib elt)] ;;(refer n m)
 			   [else
 			    (nxtelt (cdr vars) (+ elt 1))])))))))
+
+(define compile 
+  (lambda (x e next)
+    (c.scm:compile-debug x e next) ;;debug
+    (cond 
+     [(symbol? x) 
+      (compile-lookup x e 
+		      (lambda (n m)
+			(list 'refer n m next)))]
+     [(pair? x)
+      (record-case x 
+		   [quote (obj)
+			  (list 'constant obj next)]
+		   [lambda (vars body)
+		     (list 'close
+			   (compile body 
+				    (extend e vars)
+				    (list 'return (+ (length vars) 1)))
+			   next)]
+		   [if (test then else)
+		       (let ([thenc (compile then e next)]
+			     [elsec (compile else e next)])
+			 (compile test e (list 'test thenc elsec)))]
+		   [set! (var x)
+			 (compile-lookup var e
+					 (lambda (n m) (compile x e (list 'assign n m next))))]
+		   [else
+		    (application-compile x e next)
+		    #;(recur loop ([args (cdr x)]
+		    [c (compile (car x) e '(apply))])
+		    (if (null? args)
+		    (list 'frame next c)
+		    (loop (cdr args)
+		    (compile (car args)
+		    e 
+		    (list 'argument c)))))])]
+     [else (list 'constant x next)])))
+
+(define (application-compile x e next)
+  (cond ((primitive? (car x))
+	 (primitive-application-compile x e next))
+	(else
+	 (compound-application-compile x e next))))
+
+(define (primitive-application-compile x e next)
+  (recur loop ([args (cdr x)]
+	       [c (compile (car x) e '(apply))])
+	 (if (null? args)
+	     (list 'frame next c)
+	     (loop (cdr args)
+		   (compile (car args)
+			    e 
+			    (list 'argument c))))))
+
+(define (compound-application-compile x e next)
+  (recur loop ([args (cdr x)]
+	       [c (compile (car x) e '(apply))])
+	 (if (null? args)
+	     (list 'frame next c)
+	     (loop (cdr args)
+		   (compile (car args)
+			    e 
+			    (list 'argument c))))))
 
 (define VM 
   (lambda (a x e s)
@@ -154,7 +199,7 @@
 				(if (primitive? body)
 				    (VM (apply-primitive link (primitive-args s (- s e 3)))
 					(list 'return (length (primitive-args s (- s e 3))))
-				        e
+					e
 					s)
 				    (VM a body s (push link s))))]
 		 [return (n) ;;n=[args]+[static link]
@@ -165,48 +210,49 @@
 		  (print "Unknown VM instruction")
 		  a])))
 
-(define c.scm:compile-debug
-  (lambda (x e next)
-    (print "x:" x)
-    (print "e:" e)
-    (print "next:" next)
-    (print "-----------------")))
+(define (VMapply a x e s)
+  (record (body link) a
+	  (if (primitive? body)
+	      (let ((a (apply-primitive a))
+		    (x (make-return-instruction)))
+		(VM a x e s))
+	      (VM a body s (push link s)))))
 
-(define compile 
-  (lambda (x e next)
-    (c.scm:compile-debug x e next) ;;debug
-    (cond 
-     [(symbol? x) 
-      (compile-lookup x e 
-		      (lambda (n m)
-			(list 'refer n m next)))]
-     [(pair? x)
-      (record-case x 
-		   [quote (obj)
-			  (list 'constant obj next)]
-		   [lambda (vars body)
-		     (list 'close
-			   (compile body 
-				    (extend e vars)
-				    (list 'return (+ (length vars) 1)))
-			   next)]
-		   [if (test then else)
-		       (let ([thenc (compile then e next)]
-			     [elsec (compile else e next)])
-			 (compile test e (list 'test thenc elsec)))]
-		   [set! (var x)
-			 (compile-lookup var e
-					 (lambda (n m) (compile x e (list 'assign n m next))))]
-		   [else
-		    (recur loop ([args (cdr x)]
-				 [c (compile (car x) e '(apply))])
-			   (if (null? args)
-			       (list 'frame next c)
-			       (loop (cdr args)
-				     (compile (car args)
-					      e 
-					      (list 'argument c)))))])]
-     [else (list 'constant x next)])))
+(define (primitive? x)
+  (eq? x 'primitive))
+
+(define (apply-primitive a)
+  (let ((func (primitive-func func)))
+    (apply func args)))
+
+(define (primitive-func func)
+  (case func
+    ((+) +)))
+
+(define *top-level-continuation* #f)
+
+(define c.scm:read-eval-print
+  (lambda (cont)
+    (set! *top-level-continuation* cont)
+    (c.scm:prompt)
+    (print (evaluate (read)))
+    #t))
+
+(define c.scm:prompt
+  (lambda ()
+    (display "c.scm> ")
+    (flush)))
+
+(define c.scm:error
+  (lambda msg
+    (display "C.SCM ERROR")
+    (let loop ((msg msg))
+      (if (null? msg)
+	  (begin (newline)
+		 (*top-level-continuation* #t))
+	  (begin (display ": ")
+		 (display (car msg))
+		 (loop (cdr msg)))))))
 
 (define *stack-pointer* 0)
 (define *frame-pointer* 0)
@@ -224,9 +270,6 @@
   (lambda (primitive-procedure)
     (set! *stack-pointer* (push (list 'primitive primitive-procedure) *stack-pointer*))))
 
-(define (primitive? x)
-  (eq? x 'primitive))
-
 (define (primitive-args s i)
   (let loop ((args '())
 	     (i (- i 1)))
@@ -234,14 +277,6 @@
 	(cons (index s i) args)
 	(loop (cons (index s i) args) (- i 1)))))
 
-(define (apply-primitive func args)
-  (let ((func (primitive-func func)))
-    (apply func args)))
-
-(define (primitive-func func)
-  (case func
-    ((+) +)))
-    
 (define c.scm
   (lambda ()
     (initialize)
