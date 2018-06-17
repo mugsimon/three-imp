@@ -37,7 +37,7 @@
 
 (define stack (make-vector 1000))
 
-(define index ;; スタックのトップからi番目を参照
+(define index ;; スタックのトップからi番目を参照 0ベース
   (lambda (s i)
     (vector-ref stack (- (- s i) 1))))
 
@@ -50,7 +50,7 @@
   (lambda (s i v)
     (vector-set! stack (- (- s i) 1) v)))
 
-(define find-link
+(define find-link ;; n回静的リンクをたどる
   (lambda (n e)
     (if (= n 0)
         e
@@ -69,13 +69,14 @@
 (define c.scm:stack-print
   (lambda (s)
     (display "stack:")
+    (display "[")
     (if (= s 0)
-	(print)
+	(print "]")
 	(let loop ((i (- s 1)))
 	  (if (= i 0)
 	      (print (vector-ref stack i))
 	      (begin (display (vector-ref stack i))
-		     (display " ")
+		     (display "][")
 		     (loop (- i 1))))))))
 
 (define c.scm:compile-debug
@@ -84,6 +85,7 @@
     (print "e:" e)
     (print "next:" next)
     (print "-----------------")))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define compile-lookup
   (lambda (var e return)
@@ -103,7 +105,8 @@
 
 (define compile 
   (lambda (x e next)
-    (c.scm:compile-debug x e next) ;;debug
+    (when *debug-mode*
+	  (c.scm:compile-debug x e next)) ;;debug
     (cond 
      [(symbol? x) 
       (compile-lookup x e 
@@ -127,83 +130,51 @@
 			 (compile-lookup var e
 					 (lambda (n m) (compile x e (list 'assign n m next))))]
 		   [else
-		    (application-compile x e next)
-		    #;(recur loop ([args (cdr x)]
-		    [c (compile (car x) e '(apply))])
-		    (if (null? args)
-		    (list 'frame next c)
-		    (loop (cdr args)
-		    (compile (car args)
-		    e 
-		    (list 'argument c)))))])]
+		    (recur loop ([args (cdr x)]
+				 [c (compile (car x) e '(apply))])
+			   (if (null? args)
+			       (list 'frame next c)
+			       (loop (cdr args)
+				     (compile (car args)
+					      e 
+					      (list 'argument c)))))])]
      [else (list 'constant x next)])))
-
-(define (application-compile x e next)
-  (cond ((primitive? (car x))
-	 (primitive-application-compile x e next))
-	(else
-	 (compound-application-compile x e next))))
-
-(define (primitive-application-compile x e next)
-  (recur loop ([args (cdr x)]
-	       [c (compile (car x) e '(apply))])
-	 (if (null? args)
-	     (list 'frame next c)
-	     (loop (cdr args)
-		   (compile (car args)
-			    e 
-			    (list 'argument c))))))
-
-(define (compound-application-compile x e next)
-  (recur loop ([args (cdr x)]
-	       [c (compile (car x) e '(apply))])
-	 (if (null? args)
-	     (list 'frame next c)
-	     (loop (cdr args)
-		   (compile (car args)
-			    e 
-			    (list 'argument c))))))
 
 (define VM 
   (lambda (a x e s)
-    (c.scm:VM-debug a x e s) ;;debug code
+    (when *debug-mode*
+	  (c.scm:VM-debug a x e s)) ;;debug code
     (record-case x
 		 [halt ()
-		       (print "halt")
 		       a]
 		 [refer (n m x) ;;(index s i)
-			(print "refer")
+			;(print "refer") ;;debug
+			;(print "s:" s "i:" (find-link n e)) ;;debug
 			(VM (index (find-link n e) m) x e s)]
 		 [constant (obj x)
-			   (print "constant")
+			   ;(print "constant")
 			   (VM obj x e s)]
 		 [close (body x)
-			(print "close")
+			;(print "close")
 			(VM (functional body e) x e s)]
 		 [test (then else)
-		       (print "test")
+		       ;(print "test")
 		       (VM a (if a then else) e s)]
 		 [assign (n m x)
-			 (print "assign")
+			 ;(print "assign")
 			 (index-set! (find-link n e) m a)
 			 (VM a x e s)]
 		 [frame (ret x)
-			(print "frame")
+			;(print "frame")
 			(VM a x e (push ret (push e s)))]
 		 [argument (x)
-			   (print "argument")
+			   ;(print "argument")
 			   (VM a x e (push a s))]
 		 [apply ()
-			(print "apply")
-			(record (body link) a
-				(if (primitive? body)
-				    (VM (apply-primitive link (primitive-args s (- s e 3)))
-					(list 'return (length (primitive-args s (- s e 3))))
-					e
-					s)
-				    (VM a body s (push link s))))]
+			;(print "apply")
+			(VMapply a x e s)]
 		 [return (n) ;;n=[args]+[static link]
-			 (print "return")
+			 ;(print "return")
 			 (let ([s (- s n)])
 			   (VM a (index s 0) (index s 1) (- s 2)))]
 		 [else
@@ -211,23 +182,33 @@
 		  a])))
 
 (define (VMapply a x e s)
-  (record (body link) a
-	  (if (primitive? body)
-	      (let ((a (apply-primitive a))
-		    (x (make-return-instruction)))
-		(VM a x e s))
+  (if (primitive? a)
+      (let ((a (apply-primitive a s))
+	    (x (make-return-instruction a)))
+	(VM a x e s))      
+      (record (body link) a
 	      (VM a body s (push link s)))))
 
-(define (primitive? x)
-  (eq? x 'primitive))
+(define (primitive? a)
+  (eq? (car a) 'primitive))
 
-(define (apply-primitive a)
-  (let ((func (primitive-func func)))
+(define (apply-primitive a s)
+  (let ((func (cadr a))
+	(args (primitive-args s (caddr a))))
     (apply func args)))
 
-(define (primitive-func func)
-  (case func
-    ((+) +)))
+(define (primitive-args s n)
+  (if (= n 0)
+      '()
+      (let loop ((args '())
+		 (i (- n 1)))
+	(if (= i 0)
+	    (cons (index s i) args)
+	    (loop (cons (index s i) args) (- i 1))))))
+
+(define (make-return-instruction a)
+  (let ((n (caddr a)))
+    (list 'return n)))
 
 (define *top-level-continuation* #f)
 
@@ -255,27 +236,33 @@
 		 (loop (cdr msg)))))))
 
 (define *stack-pointer* 0)
-(define *frame-pointer* 0)
 (define *global-environment* '())
+(define *debug-mode* #t)
 
 (define initialize
   (lambda ()
     (set! *stack-pointer* 0)
     (set! *global-environment* '())
-    (let ((vars '(+)))
-      (set! *global-environment* (extend *global-environment* vars))
-      (for-each add-primitive vars))))
+    (set! *global-environment*
+	  (extend *global-environment* '(+ - * = exit)))
+    (for-each add-primitive (reverse (list (cons + 2) (cons - 2) (cons * 2) (cons = 2)
+					   (cons c.scm:exit 0))))))
 
-(define add-primitive
-  (lambda (primitive-procedure)
-    (set! *stack-pointer* (push (list 'primitive primitive-procedure) *stack-pointer*))))
+(define (add-primitive primitive-procedure)
+  (let ((primitive-procedure
+	 (make-primitive (car primitive-procedure)
+			 (cdr primitive-procedure))))
+    (set! *stack-pointer*
+	  (push primitive-procedure
+		*stack-pointer*))))
 
-(define (primitive-args s i)
-  (let loop ((args '())
-	     (i (- i 1)))
-    (if (zero? i)
-	(cons (index s i) args)
-	(loop (cons (index s i) args) (- i 1)))))
+(define (make-primitive primitive-procedure n)
+  (list 'primitive primitive-procedure n))
+
+(define (c.scm:define var val))
+
+(define (c.scm:exit)
+  (*top-level-continuation* #f))
 
 (define c.scm
   (lambda ()
@@ -295,23 +282,3 @@
 (define evaluate
   (lambda (x)
     (VM '() (compile x *global-environment* '(halt)) *stack-pointer* *stack-pointer*)))
-
-
-#|
-(define compile-define-lookup
-  (lambda (var e return)
-    (if (null? e)
-	(c.scm:error "c.scm:error - Unbound variable")
-	(recur nxtrib ([e e] [rib 0])
-	       (if (null? e)
-		   (c.scm:error "c.scm:error - Unbound variable")
-		   (recur nxtelt ([vars (car e)] [elt 0])
-			  (cond 
-			   [(null? vars)	
-			    (nxtrib (cdr e) (+ rib 1))]
-			   [(eq? (car vars) var)
-			    (return rib elt)]
-			   [else
-			    (nxtelt (cdr vars) (+ elt 1))])))))))
-
-|#
