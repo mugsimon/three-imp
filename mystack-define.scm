@@ -103,6 +103,25 @@
 			   [else
 			    (nxtelt (cdr vars) (+ elt 1))])))))))
 
+(define (define-lookup var e x next return)
+  (cond ((not (eq? (car next) 'halt))
+	 (c.scm:error "syntax-error"
+		      "the form is only allowed in toplevel"
+		      x))
+	((null? e)
+	 (set! *global-environment* (list (cons var (car *global-environment*))))
+	 (return 0 -1 *global-environment*))
+	(else
+	 (recur nxtelt ([vars (car e)] [elt 0])
+		(cond
+		 [(null? vars)
+		  (set! *global-environment* (list (cons var (car *global-environment*))))
+		  (return 0 -1)]
+		 [(eq? (car vars) var)
+		  (return 0 elt e)]
+		 [else
+		  (nxtelt (cdr vars) (+ elt 1))])))))
+
 (define compile 
   (lambda (x e next)
     (when *debug-mode*
@@ -126,6 +145,11 @@
 		       (let ([thenc (compile then e next)]
 			     [elsec (compile else e next)])
 			 (compile test e (list 'test thenc elsec)))]
+		   [define (var val)
+		     (define-lookup
+		       var e x next
+		       (lambda (n m)
+			 (compile val *global-environment* (list 'assign n m next))))]       
 		   [set! (var x)
 			 (compile-lookup var e
 					 (lambda (n m) (compile x e (list 'assign n m next))))]
@@ -162,8 +186,10 @@
 		       (VM a (if a then else) e s)]
 		 [assign (n m x)
 					;(print "assign")
-			 (index-set! (find-link n e) m a)
-			 (VM a x e s)]
+			 (VMassign a x e s n m)
+			 ;(index-set! (find-link n e) m a)
+					;(VM a x e s)
+			 ]
 		 [frame (ret x)
 			;(print "frame")
 			(VM a x e (push ret (push e s)))]
@@ -180,6 +206,13 @@
 		 [else
 		  (print "Unknown VM instruction")
 		  a])))
+
+(define (VMassign a x e s n m)
+  (index-set! (find-link n e) m a)
+  (if (= m -1)
+      (begin (set! *stack-pointer* (+ *stack-pointer* 1))
+	     (VM a x *stack-pointer* *stack-pointer*))
+      (VM a x e s)))
 
 (define (VMapply a x e s)
   (if (primitive? a)
@@ -205,14 +238,6 @@
 	(if (= i 0)
 	    (cons (index s i) args)
 	    (loop (cons (index s i) args) (- i 1))))))
-
-(define (primitive-args s n)
-  (let loop ((args '())
-	     (i 0))))
-
-(define (VMinstruction? x)
-  (memq (car x)
-	'(halt refer constant close test assign frame argument apply return)))
 
 (define (make-return-instruction a)
   (let ((n (caddr a)))
