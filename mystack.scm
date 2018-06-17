@@ -74,7 +74,7 @@
 	(print "]")
 	(let loop ((i (- s 1)))
 	  (if (= i 0)
-	      (print (vector-ref stack i))
+	      (print (vector-ref stack i) "]")
 	      (begin (display (vector-ref stack i))
 		     (display "][")
 		     (loop (- i 1))))))))
@@ -90,10 +90,10 @@
 (define compile-lookup
   (lambda (var e return)
     (if (null? e)
-	(c.scm:error "Unbound variable" var)
+	(c.scm:error "unbound variable" var)
 	(recur nxtrib ([e e] [rib 0])
 	       (if (null? e)
-		   (c.scm:error "Unbound variable" var)
+		   (c.scm:error "unbound variable" var)
 		   (recur nxtelt ([vars (car e)] [elt 0])
 			  (cond 
 			   [(null? vars)	
@@ -102,6 +102,29 @@
 			    (return rib elt)] ;;(refer n m)
 			   [else
 			    (nxtelt (cdr vars) (+ elt 1))])))))))
+
+(define define-lookup
+  (lambda (var e x next return)
+    (cond
+     ((eq? (car next) 'halt)
+      (c.scm:error "syntax-error"
+		   "the form can appear only in the toplevel"
+		   x))
+     ((null? e)
+      (set! *global-environment*
+	    (cons var *global-environment*))
+      (return 0 -1 e))
+     (else
+      (recur nxtelt ([vars (car e)] [elt 0])
+	     (cond
+	      [(null? vars)
+	       (set! *global-environment*
+		     (cons var *global-environment*))
+	       (return 0 -1 (cons (cons var (car e)) e))]
+	      [(eq? (car vars) var)
+	       (return 0 elt e)]
+	      [else
+	       (nxtelt (cdr vars) (+ elt 1))]))))))
 
 (define compile 
   (lambda (x e next)
@@ -129,6 +152,10 @@
 		   [set! (var x)
 			 (compile-lookup var e
 					 (lambda (n m) (compile x e (list 'assign n m next))))]
+		   [define (var x)
+		     (define-lookup var e x next
+		       (lambda (n m e)
+			 (compile x e (list 'assign n m next))))]
 		   [else
 		    (recur loop ([args (cdr x)]
 				 [c (compile (car x) e '(apply))])
