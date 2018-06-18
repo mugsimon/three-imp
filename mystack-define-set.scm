@@ -281,8 +281,6 @@
 (define (make-primitive primitive-procedure n)
   (list 'primitive primitive-procedure n))
 
-(define (c.scm:define var val))
-
 (define (c.scm:exit)
   (*top-level-continuation* #f))
 

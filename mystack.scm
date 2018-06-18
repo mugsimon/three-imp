@@ -273,8 +273,8 @@
     (set! *stack-pointer* 0)
     (set! *global-environment* '())
     (set! *global-environment*
-	  (extend *global-environment* '(#;fact + - * = exit)))
-    (for-each add-primitive (reverse (list #;(cons 'fact 1) (cons + 2) (cons - 2) (cons * 2) (cons = 2)
+	  (extend *global-environment* '(+ - * = exit)))
+    (for-each add-primitive (reverse (list (cons + 2) (cons - 2) (cons * 2) (cons = 2)
 					   (cons c.scm:exit 0))))))
 
 (define (add-primitive primitive-procedure)
