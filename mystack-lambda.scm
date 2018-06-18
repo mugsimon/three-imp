@@ -124,10 +124,6 @@
   (set! *global-environment* (list (cons var (car *global-environment*))))
   (set! *stack-pointer* (+ *stack-pointer* 1)))
 
-(define (multi-body? x)
-  (not (or (null? (cddr x))
-	   (null? (cdddr x)))))
-
 (define (compile-lambda x e next)
   (cond ((null? (cdr x))
 	 (c.scm:error "syntax-error"

@@ -124,9 +124,32 @@
   (set! *global-environment* (list (cons var (car *global-environment*))))
   (set! *stack-pointer* (+ *stack-pointer* 1)))
 
-(define (multi-body? x)
-  (not (or (null? (cddr x))
-	   (null? (cdddr x)))))
+(define (compile-lambda x e next)
+  (cond ((null? (cdr x))
+	 (c.scm:error "syntax-error"
+		      "malformed lambda"
+		      x))
+	((null? (cddr x))
+	 (list 'close
+	       (compile 0
+			(extend e (cadr x))
+			(list 'return (+ (length (cadr x)) 1)))
+	       next))
+	((null? (cdddr x))
+	 (list 'close
+	       (compile (caddr x)
+			(extend e (cadr x))
+			(list 'return (+ (length (cadr x)) 1)))
+	       next))
+	(else
+	 (let ((reverse-bodies (reverse (cddr x)))
+	       (e (extend e (cadr x))))
+	   (let loop ((bodies reverse-bodies)
+		      (c (list 'return (+ (length (cadr x)) 1))))
+	     (if (null? bodies)
+		 (list 'close c next)
+		 (loop (cdr bodies)
+		       (compile (car bodies) e c))))))))
 
 (define compile 
   (lambda (x e next)
@@ -138,10 +161,12 @@
 		      (lambda (n m)
 			(list 'refer n m next)))]
      [(pair? x)
+      (if (eq? (car x) 'lambda)
+	  (compile-lambda x e next)
       (record-case x 
 		   [quote (obj)
 			  (list 'constant obj next)]
-		   [lambda (vars body)
+		   #;[lambda (vars body)
 		     (list 'close
 			   (compile body 
 				    (extend e vars)
@@ -165,7 +190,7 @@
 			       (loop (cdr args)
 				     (compile (car args)
 					      e 
-					      (list 'argument c)))))])]
+					      (list 'argument c)))))]))]
      [else (list 'constant x next)])))
 
 (define VM 
