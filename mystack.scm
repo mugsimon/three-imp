@@ -57,6 +57,7 @@
         (find-link (- n 1) (index e -1)))))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; functions for debug
+(define *debug-mode* #t)
 (define c.scm:VM-debug
   (lambda (a x e s)
     (print "a:" a)
@@ -247,22 +248,25 @@
 
 (define (apply-primitive a s)
   (let ((func (cadr a))
-	(args (primitive-args s (caddr a))))
-    (print "args:" args) ;;debug
-    (apply func args)))
+	(args (primitive-args s)))
+    (if (not (= (caddr a) (length args)))
+	(c.scm:error "wrong number of argument"
+		     "required" (caddr a)
+		     "but got" (length args))
+	(apply func args))))
 
-(define (primitive-args s n)
-  (if (= n 0)
-      '()
-      (let loop ((args '())
-		 (i (- n 1)))
-	(if (= i 0)
-	    (cons (index s i) args)
-	    (loop (cons (index s i) args) (- i 1))))))
+(define (primitive-args s)
+  (let loop ((args (list (index s 0)))
+	     (i 1))
+    (if (VMinstruction? (car args))
+	(reverse (cdr args))
+	(loop (cons (index s i) args) (+ i 1)))))
 
 (define (VMinstruction? x)
-  (memq (car x)
-	'(halt refer constant close test assign frame argument apply return)))
+  (if (pair? x)
+      (memq (car x)
+	    '(halt refer constant close test assign frame argument apply return))
+      #f))
 
 (define (make-return-instruction a)
   (let ((n (caddr a)))
@@ -295,16 +299,20 @@
 
 (define *stack-pointer* 0)
 (define *global-environment* '())
-(define *debug-mode* #t)
 
 (define initialize
   (lambda ()
     (set! *stack-pointer* 0)
     (set! *global-environment* '())
     (set! *global-environment*
-	  (extend *global-environment* '(+ - * = exit)))
+	  (extend *global-environment* '(+ - * = exit display cons car cdr null?)))
     (for-each add-primitive (reverse (list (cons + 2) (cons - 2) (cons * 2) (cons = 2)
-					   (cons c.scm:exit 0))))))
+					   (cons c.scm:exit 0)
+					   (cons display 1)
+					   (cons cons 2)
+					   (cons car 1)
+					   (cons cdr 1)
+					   (cons null? 1))))))
 
 (define (add-primitive primitive-procedure)
   (let ((primitive-procedure
@@ -327,13 +335,6 @@
       (if (call/cc c.scm:read-eval-print)
 	  (loop)
 	  (print "bye")))))
-
-(define c.scm:read-eval-print
-  (lambda (cont)
-    (set! *top-level-continuation* cont)
-    (c.scm:prompt)
-    (print (evaluate (read)))
-    #t))
 
 (define evaluate
   (lambda (x)
