@@ -103,6 +103,27 @@
 			   [else
 			    (nxtelt (cdr vars) (+ elt 1))])))))))
 
+(define (define-lookup var e x next)
+  (cond ((not (eq? (car next) 'halt))
+	 (c.scm:error "syntax-error"
+		      "the form is only allowed in toplevel"
+		      x))
+	((null? e)
+	 (extend-*groval-environment* var))
+	(else
+	 (recur nxtelt ([vars (car e)] [elt 0])
+		(cond
+		 [(null? vars)
+		  (extend-*groval-environment* var)]
+		 [(eq? (car vars) var)
+		  #t]
+		 [else
+		  (nxtelt (cdr vars) (+ elt 1))])))))
+
+(define (extend-*groval-environment* var)
+  (set! *global-environment* (list (cons var (car *global-environment*))))
+  (set! *stack-pointer* (+ *stack-pointer* 1)))
+
 (define compile 
   (lambda (x e next)
     (when *debug-mode*
@@ -129,6 +150,9 @@
 		   [set! (var x)
 			 (compile-lookup var e
 					 (lambda (n m) (compile x e (list 'assign n m next))))]
+		   [define (var val)
+		     (define-lookup var e x next)
+		     (compile (list 'set! var val) *global-environment* next)]
 		   [else
 		    (recur loop ([args (cdr x)]
 				 [c (compile (car x) e '(apply))])
@@ -195,6 +219,7 @@
 (define (apply-primitive a s)
   (let ((func (cadr a))
 	(args (primitive-args s (caddr a))))
+    (print "args:" args) ;;debug
     (apply func args)))
 
 (define (primitive-args s n)
@@ -205,10 +230,6 @@
 	(if (= i 0)
 	    (cons (index s i) args)
 	    (loop (cons (index s i) args) (- i 1))))))
-
-(define (primitive-args s n)
-  (let loop ((args '())
-	     (i 0))))
 
 (define (VMinstruction? x)
   (memq (car x)
@@ -252,8 +273,8 @@
     (set! *stack-pointer* 0)
     (set! *global-environment* '())
     (set! *global-environment*
-	  (extend *global-environment* '(fact + - * = exit)))
-    (for-each add-primitive (reverse (list (cons 'fact 1) (cons + 2) (cons - 2) (cons * 2) (cons = 2)
+	  (extend *global-environment* '(#;fact + - * = exit)))
+    (for-each add-primitive (reverse (list #;(cons 'fact 1) (cons + 2) (cons - 2) (cons * 2) (cons = 2)
 					   (cons c.scm:exit 0))))))
 
 (define (add-primitive primitive-procedure)
@@ -266,8 +287,6 @@
 
 (define (make-primitive primitive-procedure n)
   (list 'primitive primitive-procedure n))
-
-(define (c.scm:define var val))
 
 (define (c.scm:exit)
   (*top-level-continuation* #f))
